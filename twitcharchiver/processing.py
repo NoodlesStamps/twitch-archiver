@@ -109,7 +109,7 @@ class Processing:
 
                 # if stream length is less than TEMP_BUFFER_LEN, archive in stream-only mode for the time being
                 # while we wait for twitch's VOD api to update
-                if not stream.vod.v_id and stream.vod.duration < TEMP_BUFFER_LEN:
+                if self.archive_video and not stream.vod.v_id and stream.vod.duration < TEMP_BUFFER_LEN:
                     self.log.info(
                         "Stream began very recently, buffering initial segments until API updates."
                     )
