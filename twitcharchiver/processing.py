@@ -22,6 +22,7 @@ from twitcharchiver.exceptions import (
     VodLockedError,
     VodAlreadyCompleted,
     VideoFormatUnsupported,
+    TwitchAPIErrorForbidden,
 )
 from twitcharchiver.utils import send_push, send_discord_notification
 from twitcharchiver.vod import Vod, ArchivedVod
@@ -97,60 +98,66 @@ class Processing:
             channel_live = channel.is_live(force_refresh=True)
             if channel_live:
                 # fetch current stream info
-                stream: Stream = Stream(
-                    channel, Vod(), self.output_dir, self.quality, self.quiet, False
-                )
-
-                # check for debug force no archive flag
-                if self.force_no_archive:
-                    stream.vod = ArchivedVod.convert_from_vod(stream.vod)
-                    self._start_download(stream)
-                    continue
-
-                # if stream length is less than TEMP_BUFFER_LEN, archive in stream-only mode for the time being
-                # while we wait for twitch's VOD api to update
-                if self.archive_video and not stream.vod.v_id and stream.vod.duration < TEMP_BUFFER_LEN:
-                    self.log.info(
-                        "Stream began very recently, buffering initial segments until API updates."
+                try:
+                    stream: Stream = Stream(
+                        channel, Vod(), self.output_dir, self.quality, self.quiet, False
                     )
-                    with DownloadHandler(
-                        ArchivedVod.convert_from_vod(stream.vod)
-                    ) as _dh:
-                        # we're not setting either the video_archived or chat_archived flags here because we may want
-                        # to archive them from the VOD (if it becomes available). The stream info will be placed into
-                        # the database once the buffer is saved
-                        stream.archive_for_duration(TEMP_BUFFER_LEN)
 
-                        # stream ended before buffer time reached
-                        if stream.has_ended:
-                            stream.export_metadata()
-                            stream.merge()
-                            stream.cleanup_temp_files()
-
-                # don't bother with further checks if stream archive completed
-                if not stream.has_ended:
-                    # TEMP_BUFFER_LEN has passed, check if stream has paired VOD now...
-                    stream.match_to_channel_vod()
-
-                    # if VOD was missed by the channel video fetcher as the stream was too new we add it to the videos.
-                    # otherwise we add it to the download queue
-                    if stream.vod.v_id:
-                        self.log.debug("Current stream has a paired VOD.")
-
-                        # remove downloaded files (if any)
-                        stream.cleanup_temp_files()
-                        shutil.rmtree(Path(stream.output_dir), ignore_errors=True)
-
-                        if stream.vod.v_id not in [v.v_id for v in channel_videos]:
-                            channel_videos.insert(0, Vod(stream.vod.v_id))
-
-                    # no paired VOD exists, so we archive the stream before moving onto VODs
-                    elif self.archive_video and not self.archive_only:
-                        self.log.debug(
-                            "Current stream has no paired VOD - beginning stream downloader."
-                        )
+                    # check for debug force no archive flag
+                    if self.force_no_archive:
                         stream.vod = ArchivedVod.convert_from_vod(stream.vod)
                         self._start_download(stream)
+                        continue
+
+                    # if stream length is less than TEMP_BUFFER_LEN, archive in stream-only mode for the time being
+                    # while we wait for twitch's VOD api to update
+                    if self.archive_video and not stream.vod.v_id and stream.vod.duration < TEMP_BUFFER_LEN:
+                        self.log.info(
+                            "Stream began very recently, buffering initial segments until API updates."
+                        )
+                        with DownloadHandler(
+                            ArchivedVod.convert_from_vod(stream.vod)
+                        ) as _dh:
+                            # we're not setting either the video_archived or chat_archived flags here because we may want
+                            # to archive them from the VOD (if it becomes available). The stream info will be placed into
+                            # the database once the buffer is saved
+                            stream.archive_for_duration(TEMP_BUFFER_LEN)
+
+                            # stream ended before buffer time reached
+                            if stream.has_ended:
+                                stream.export_metadata()
+                                stream.merge()
+                                stream.cleanup_temp_files()
+
+                    # don't bother with further checks if stream archive completed
+                    if not stream.has_ended:
+                        # TEMP_BUFFER_LEN has passed, check if stream has paired VOD now...
+                        stream.match_to_channel_vod()
+
+                        # if VOD was missed by the channel video fetcher as the stream was too new we add it to the videos.
+                        # otherwise we add it to the download queue
+                        if stream.vod.v_id:
+                            self.log.debug("Current stream has a paired VOD.")
+
+                            # remove downloaded files (if any)
+                            stream.cleanup_temp_files()
+                            shutil.rmtree(Path(stream.output_dir), ignore_errors=True)
+
+                            if stream.vod.v_id not in [v.v_id for v in channel_videos]:
+                                channel_videos.insert(0, Vod(stream.vod.v_id))
+
+                        # no paired VOD exists, so we archive the stream before moving onto VODs
+                        elif self.archive_video and not self.archive_only:
+                            self.log.debug(
+                                "Current stream has no paired VOD - beginning stream downloader."
+                            )
+                            stream.vod = ArchivedVod.convert_from_vod(stream.vod)
+                            self._start_download(stream)
+                except TwitchAPIErrorForbidden as e:
+                    self.log.warning(
+                        f"Skipping channel {channel.name} due to a Forbidden error: {e}"
+                    )
+                    continue
 
             # move on if channel offline and `live-only` set
             elif self.live_only:
