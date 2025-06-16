@@ -12,6 +12,7 @@ from twitcharchiver.downloader import Downloader
 from twitcharchiver.exceptions import (
     TwitchAPIErrorNotFound,
     TwitchAPIErrorForbidden,
+    TwitchAPIError,
 )
 from twitcharchiver.utils import (
     Progress,
