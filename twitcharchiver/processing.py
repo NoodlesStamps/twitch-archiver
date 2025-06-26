@@ -278,9 +278,10 @@ class Processing:
                     # run real-time archiver if enabled and current stream is being archived to this VOD
                     if self.real_time:
                         self.log.debug("Archiving VOD with `real-time` archiver.")
+                        vod_channel_output_dir = Path(self._parent_dir, _vod.channel.name)
                         _real_time_archiver = RealTime(
                             _vod,
-                            self.output_dir,
+                            vod_channel_output_dir,
                             self.archive_chat,
                             self.quality,
                             self.threads,
@@ -291,10 +292,11 @@ class Processing:
             if not _vod.video_archived and self.archive_video:
                 self.log.debug("Adding VOD to video archive queue.")
                 if _vod.type == "HIGHLIGHT":
+                    vod_channel_output_dir = Path(self._parent_dir, _vod.channel.name)
                     _video_download_queue.append(
                         Highlight(
                             _vod,
-                            self.output_dir,
+                            vod_channel_output_dir,
                             self.quality,
                             self.threads,
                             self.quiet,
@@ -302,10 +304,11 @@ class Processing:
                     )
 
                 else:
+                    vod_channel_output_dir = Path(self._parent_dir, _vod.channel.name)
                     _video_download_queue.append(
                         Video(
                             _vod,
-                            self.output_dir,
+                            vod_channel_output_dir,
                             self.quality,
                             self.threads,
                             self.quiet,
@@ -314,7 +317,8 @@ class Processing:
 
             if not _vod.chat_archived and self.archive_chat:
                 self.log.debug("Adding VOD to chat archive queue.")
-                _chat_download_queue.append(Chat(_vod, self.output_dir, self.quiet))
+                vod_channel_output_dir = Path(self._parent_dir, _vod.channel.name)
+                _chat_download_queue.append(Chat(_vod, vod_channel_output_dir, self.quiet))
 
         for _downloader in _video_download_queue:
             self._start_download(_downloader)
