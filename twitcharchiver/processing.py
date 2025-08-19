@@ -95,7 +95,7 @@ class Processing:
                     channel_videos.extend(channel.get_channel_highlights())
 
             channel_live = channel.is_live(force_refresh=True)
-            if channel_live:
+            if channel_live and not self.archive_only:
                 # fetch current stream info
                 stream: Stream = Stream(
                     channel, Vod(), self.output_dir, self.quality, self.quiet, False
