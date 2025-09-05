@@ -54,6 +54,7 @@ class Chat(Downloader):
         # create output dir
         self.output_dir = Path(
             self._parent_dir,
+            self.vod.channel.name,
             build_output_dir_name(self.vod.title, self.vod.created_at, self.vod.v_id),
         )
 
