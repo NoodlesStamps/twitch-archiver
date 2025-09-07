@@ -79,7 +79,7 @@ class Processing:
             self.log.info("Fetching VODs for channel '%s'.", channel.name)
             self.log.debug("Channel info: %s", channel)
             # set output directory to subdir of channel name
-            self.output_dir = Path(self._parent_dir, channel.name)
+            channel_output_dir = Path(self._parent_dir, channel.name)
 
             # retrieve available vods and extract required info
             # only need the most recent VOD if running in live-only mode
@@ -97,7 +97,7 @@ class Processing:
             if channel_live:
                 # fetch current stream info
                 stream: Stream = Stream(
-                    channel, Vod(), self.output_dir, self.quality, self.quiet, False
+                    channel, Vod(), channel_output_dir, self.quality, self.quiet, False
                 )
 
                 # check for debug force no archive flag
@@ -244,6 +244,7 @@ class Processing:
 
         # begin processing each available vod
         for _vod in download_queue:
+            output_dir_for_vod = Path(self._parent_dir, _vod.channel.name)
             self.log.debug("Processing VOD %s from download queue.", _vod.v_id)
 
             if _vod.channel not in _channel_cache:
@@ -276,7 +277,7 @@ class Processing:
                         self.log.debug("Archiving VOD with `real-time` archiver.")
                         _real_time_archiver = RealTime(
                             _vod,
-                            self.output_dir,
+                            output_dir_for_vod,
                             self.archive_chat,
                             self.quality,
                             self.threads,
@@ -290,7 +291,7 @@ class Processing:
                     _video_download_queue.append(
                         Highlight(
                             _vod,
-                            self.output_dir,
+                            output_dir_for_vod,
                             self.quality,
                             self.threads,
                             self.quiet,
@@ -301,7 +302,7 @@ class Processing:
                     _video_download_queue.append(
                         Video(
                             _vod,
-                            self.output_dir,
+                            output_dir_for_vod,
                             self.quality,
                             self.threads,
                             self.quiet,
@@ -310,7 +311,7 @@ class Processing:
 
             if not _vod.chat_archived and self.archive_chat:
                 self.log.debug("Adding VOD to chat archive queue.")
-                _chat_download_queue.append(Chat(_vod, self.output_dir, self.quiet))
+                _chat_download_queue.append(Chat(_vod, output_dir_for_vod, self.quiet))
 
         for _downloader in _video_download_queue:
             self._start_download(_downloader)
