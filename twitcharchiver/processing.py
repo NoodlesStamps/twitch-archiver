@@ -75,7 +75,6 @@ class Processing:
 
         :param channels: list of channels to download based on processing configuration
         """
-        download_queue: list[ArchivedVod] = []
         for channel in channels:
             self.log.info("Fetching VODs for channel '%s'.", channel.name)
             self.log.debug("Channel info: %s", channel)
@@ -222,10 +221,7 @@ class Processing:
                 )
 
             else:
-                download_queue.extend(_channel_download_queue)
-
-        # download all collected VODs
-        self.vod_downloader(download_queue)
+                self.vod_downloader(_channel_download_queue)
 
     def vod_downloader(self, download_queue: list[ArchivedVod]):
         """
