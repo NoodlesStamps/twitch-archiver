@@ -75,7 +75,6 @@ class Processing:
 
         :param channels: list of channels to download based on processing configuration
         """
-        download_queue: list[ArchivedVod] = []
         for channel in channels:
             self.log.info("Fetching VODs for channel '%s'.", channel.name)
             self.log.debug("Channel info: %s", channel)
@@ -222,10 +221,7 @@ class Processing:
                 )
 
             else:
-                download_queue.extend(_channel_download_queue)
-
-        # download all collected VODs
-        self.vod_downloader(download_queue)
+                self.vod_downloader(_channel_download_queue)
 
     def vod_downloader(self, download_queue: list[ArchivedVod]):
         """
@@ -320,34 +316,9 @@ class Processing:
             self._start_download(_downloader)
 
         if _chat_download_queue:
-            _worker_pool = ThreadPoolExecutor(max_workers=self.threads)
-            try:
-                self.log.debug(
-                    "Beginning bulk chat archival with %s threads.", self.threads
-                )
-                # create threadpool for chat downloads
-                futures = []
-                for _downloader in _chat_download_queue:
-                    futures.append(
-                        _worker_pool.submit(self._start_download, _downloader)
-                    )
-
-                for future in futures:
-                    if future.exception():
-                        self.log.debug(
-                            "Exception occurred in chat download pool: %s",
-                            future.exception(),
-                        )
-
-            except KeyboardInterrupt:
-                self.log.debug(
-                    "Chat downloader caught interrupt, shutting down workers..."
-                )
-                _worker_pool.shutdown(wait=False, cancel_futures=True)
-                sys.exit(0)
-
-            finally:
-                _worker_pool.shutdown(wait=False, cancel_futures=True)
+            self.log.debug("Beginning sequential chat archival.")
+            for _downloader in _chat_download_queue:
+                self._start_download(_downloader)
 
     def _start_download(self, _downloader: Downloader):
         try:
