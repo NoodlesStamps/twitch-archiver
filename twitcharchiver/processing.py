@@ -62,10 +62,6 @@ class Processing:
         # debug flags
         self.force_no_archive: bool = conf["force_no_archive"]
 
-        # perform database setup
-        with Database(Path(self.config_dir, "vods.db")) as _db:
-            _db.setup()
-
         # create signal handler for graceful removal of lock files
         signal.signal(signal.SIGTERM, signal.default_int_handler)
 

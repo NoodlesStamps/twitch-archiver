@@ -24,13 +24,16 @@ class Database:
         """
         self.log = logging.getLogger()
 
-        self.database_path = str(database_path)
+        self.database_path = database_path
 
         try:
             self.log.debug("Database path: %s", self.database_path)
+            # create directory if it doesn't exist
+            self.database_path.parent.mkdir(parents=True, exist_ok=True)
             self.connection = sqlite3.connect(self.database_path)
             self.cursor = self.connection.cursor()
             self.log.debug("Connection to SQLite DB successful.")
+            self.setup()
 
         except Error as exc:
             raise DatabaseError(f"Connection to SQLite DB failed: {exc}") from exc

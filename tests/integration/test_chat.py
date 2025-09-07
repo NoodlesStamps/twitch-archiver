@@ -55,10 +55,6 @@ class TestChat(TestCase):
         Deletes downloaded chat logs if they were exported to disk.
         """
         vod = self.chat_a.vod
-        vod_dir = Path(
-            os.getcwd(),
-            vod.channel.name,
-            build_output_dir_name(vod.title, vod.created_at, vod.v_id),
-        )
-        if vod_dir.exists():
-            shutil.rmtree(vod_dir)
+        channel_dir = Path(os.getcwd(), vod.channel.name)
+        if channel_dir.exists():
+            shutil.rmtree(channel_dir)
