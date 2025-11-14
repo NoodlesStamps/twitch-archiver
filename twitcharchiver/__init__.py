@@ -130,8 +130,8 @@ def main():
         "--threads",
         type=int,
         action="store",
-        help="Number of video download threads. (default: %(default)s)",
-        default=getenv("TWITCH_ARCHIVER_THREADS", 20),
+        help="Number of download threads. (default: %(default)s)",
+        default=getenv("TWITCH_ARCHIVER_THREADS", 10),
     )
     parser.add_argument(
         "-q",
