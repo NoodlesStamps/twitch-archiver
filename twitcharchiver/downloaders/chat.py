@@ -3,9 +3,12 @@ Module used for downloading chat logs for a given Twitch VOD.
 """
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
+from queue import Empty, Queue
 from time import sleep
+import threading
 
 from twitcharchiver.api import Api
 from twitcharchiver.downloader import Downloader
@@ -33,17 +36,22 @@ class Chat(Downloader):
     """
 
     def __init__(
-        self, vod: Vod, parent_dir: Path = Path(os.getcwd()), quiet: bool = False
+        self,
+        vod: Vod,
+        parent_dir: Path = Path(os.getcwd()),
+        quiet: bool = False,
+        threads: int = 10,
     ):
         """
         Initialize class variables.
-
         :param vod: VOD to be downloaded
         :param parent_dir: path to parent directory for downloaded files
         :param quiet: boolean whether to print progress
+        :param threads: number of download threads
         """
         # init downloader
         super().__init__(parent_dir, quiet)
+        self.max_workers = threads
 
         # setup api with required header
         self._api = Api()
@@ -167,42 +175,88 @@ class Chat(Downloader):
     def _download(self, offset: int = 0):
         """
         Downloads the chat log in its entirety.
-
         :param offset: time to begin archiving from in seconds
         :return: list of all chat messages
         :rtype: list
         """
         _progress = Progress()
-        start_len = len(self._chat_log)
+        self.log_queue = Queue()
+        self.stop_event = threading.Event()
 
-        # grab initial chat segment containing cursor
-        _initial_segment, _cursor = self._get_chat_segment(offset=offset)
-        self._chat_log.extend(
-            [m for m in _initial_segment if m["id"] not in self._chat_message_ids]
-        )
-        self._chat_message_ids.update([m["id"] for m in _initial_segment])
+        # start queue processing thread
+        # this is required as twitch does not return chat messages in order
+        process_thread = threading.Thread(target=self._process_queue)
+        process_thread.daemon = True
+        process_thread.start()
 
-        while True:
-            if not _cursor:
-                self._log.debug(
-                    f"{len(self._chat_log) - start_len} messages retrieved from Twitch."
-                )
+        # CHUNK_SIZE determines the size of the vod segment in seconds that will be downloaded by a single worker
+        CHUNK_SIZE = 120
+        # calculate offsets to be downloaded by workers
+        offsets = [
+            o for o in range(offset, self.vod.duration, CHUNK_SIZE) if o >= offset
+        ]
+        self._log.debug("VOD duration: %s", self.vod.duration)
+        self._log.debug("Offsets to download: %s", len(offsets))
+
+        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            # submit download jobs
+            futures = [
+                executor.submit(self._get_chat_chunk, o, CHUNK_SIZE) for o in offsets
+            ]
+            completed_chunks = 0
+            total_chunks = len(offsets)
+
+            from concurrent.futures import as_completed
+
+            for future in as_completed(futures):
+                # log any exceptions that may have occurred
+                if future.exception():
+                    self._log.debug(future.exception())
+
+                # update progress bar
+                completed_chunks += 1
+                if not self._quiet:
+                    _progress.print_progress(completed_chunks, total_chunks)
+
+        self.stop_event.set()
+        process_thread.join()
+
+        self._chat_log.sort(key=lambda m: m["contentOffsetSeconds"])
+
+    def _get_chat_chunk(self, offset: int, duration: int):
+        """
+        Downloads a chunk of a VODs chat log.
+        :param offset: time to begin archiving from in seconds
+        :param duration: duration of the chunk in seconds
+        """
+        _segment, _cursor = self._get_chat_segment(offset=offset)
+        self.log_queue.put(_segment)
+
+        while _cursor:
+            _segment, _cursor = self._get_chat_segment(cursor=_cursor)
+
+            # check if segment is outside of chunk
+            if _segment and _segment[0]["contentOffsetSeconds"] > offset + duration:
                 break
 
-            self._log.debug("Fetching chat segments at cursor: %s.", _cursor)
-            # grab next chat segment along with cursor for next segment
-            _segment, _cursor = self._get_chat_segment(cursor=_cursor)
-            self._chat_log.extend(
-                [m for m in _segment if m["id"] not in self._chat_message_ids]
-            )
-            self._chat_message_ids.update([m["id"] for m in _segment])
-            # vod duration in seconds is used as the total for progress bar
-            # comment offset is used to track what's been done
-            # could be done properly if there was a way to get the total number of comments
-            if not self._quiet:
-                _progress.print_progress(
-                    int(_segment[-1]["contentOffsetSeconds"]), self.vod.duration
+            self.log_queue.put(_segment)
+
+    def _process_queue(self):
+        """
+        Processes the chat log queue, adding messages to the main chat log list and updating the message id set.
+        This is run in a separate thread to handle the unordered arrival of chat segments.
+        """
+        while not self.stop_event.is_set() or not self.log_queue.empty():
+            try:
+                # block for 1s, if queue is empty check stop_event
+                segment = self.log_queue.get(timeout=1)
+                self._chat_log.extend(
+                    [m for m in segment if m["id"] not in self._chat_message_ids]
                 )
+                self._chat_message_ids.update([m["id"] for m in segment])
+
+            except Empty:
+                continue
 
     def _get_chat_segment(self, offset: int = 0, cursor: str = ""):
         """

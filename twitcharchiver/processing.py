@@ -4,7 +4,6 @@ Primary processing loops for calling the various download functions using the su
 
 import logging
 import os
-import shutil
 import signal
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -14,10 +13,6 @@ from twitcharchiver.channel import Channel
 from twitcharchiver.database import Database
 from twitcharchiver.downloader import DownloadHandler, Downloader
 from twitcharchiver.downloaders.chat import Chat
-from twitcharchiver.downloaders.highlight import Highlight
-from twitcharchiver.downloaders.realtime import RealTime
-from twitcharchiver.downloaders.stream import Stream
-from twitcharchiver.downloaders.video import Video
 from twitcharchiver.exceptions import (
     VodLockedError,
     VodAlreadyCompleted,
@@ -41,12 +36,11 @@ class Processing:
         self.log = logging.getLogger()
         self.quiet: bool = conf["quiet"]
 
-        self.archive_chat: bool = conf["chat"]
-        self.archive_video: bool = conf["video"]
+        self.archive_chat: bool = True
+        self.archive_video: bool = False
         self.archive_only: bool = conf["archive_only"]
-        self.highlights: bool = conf["highlights"]
+        self.highlights: bool = False
         self.live_only: bool = conf["live_only"]
-        self.real_time: bool = conf["real_time_archiver"]
         self.unsorted: bool = conf["unsorted"]
 
         self.config_dir: str = conf["config_dir"]
@@ -56,7 +50,6 @@ class Processing:
 
         self.discord_webhook: str = conf["discord_webhook"]
         self.pushbullet_key: str = conf["pushbullet_key"]
-        self.quality: str = conf["quality"]
         self.threads: int = conf["threads"]
 
         # debug flags
@@ -93,70 +86,12 @@ class Processing:
                 if self.highlights:
                     channel_videos.extend(channel.get_channel_highlights())
 
-            channel_live = channel.is_live(force_refresh=True)
-            if channel_live:
-                # fetch current stream info
-                stream: Stream = Stream(
-                    channel, Vod(), channel_output_dir, self.quality, self.quiet, False
-                )
-
-                # check for debug force no archive flag
-                if self.force_no_archive:
-                    stream.vod = ArchivedVod.convert_from_vod(stream.vod)
-                    self._start_download(stream)
-                    continue
-
-                # if stream length is less than TEMP_BUFFER_LEN, archive in stream-only mode for the time being
-                # while we wait for twitch's VOD api to update
-                if self.archive_video and not stream.vod.v_id and stream.vod.duration < TEMP_BUFFER_LEN:
-                    self.log.info(
-                        "Stream began very recently, buffering initial segments until API updates."
-                    )
-                    with DownloadHandler(
-                        ArchivedVod.convert_from_vod(stream.vod)
-                    ) as _dh:
-                        # we're not setting either the video_archived or chat_archived flags here because we may want
-                        # to archive them from the VOD (if it becomes available). The stream info will be placed into
-                        # the database once the buffer is saved
-                        stream.archive_for_duration(TEMP_BUFFER_LEN)
-
-                        # stream ended before buffer time reached
-                        if stream.has_ended:
-                            stream.export_metadata()
-                            stream.merge()
-                            stream.cleanup_temp_files()
-
-                # don't bother with further checks if stream archive completed
-                if not stream.has_ended:
-                    # TEMP_BUFFER_LEN has passed, check if stream has paired VOD now...
-                    stream.match_to_channel_vod()
-
-                    # if VOD was missed by the channel video fetcher as the stream was too new we add it to the videos.
-                    # otherwise we add it to the download queue
-                    if stream.vod.v_id:
-                        self.log.debug("Current stream has a paired VOD.")
-
-                        # remove downloaded files (if any)
-                        stream.cleanup_temp_files()
-                        shutil.rmtree(Path(stream.output_dir), ignore_errors=True)
-
-                        if stream.vod.v_id not in [v.v_id for v in channel_videos]:
-                            channel_videos.insert(0, Vod(stream.vod.v_id))
-
-                    # no paired VOD exists, so we archive the stream before moving onto VODs
-                    elif self.archive_video and not self.archive_only:
-                        self.log.debug(
-                            "Current stream has no paired VOD - beginning stream downloader."
-                        )
-                        stream.vod = ArchivedVod.convert_from_vod(stream.vod)
-                        self._start_download(stream)
-
             # move on if channel offline and `live-only` set
-            elif self.live_only:
-                self.log.info(
-                    "%s is offline and `live-only` argument provided.", channel.name
-                )
-                continue
+            if not channel.is_live(force_refresh=True) and self.live_only:
+                    self.log.info(
+                        "%s is offline and `live-only` argument provided.", channel.name
+                    )
+                    continue
 
             self.log.debug(
                 "Available VODs: %s",
@@ -232,7 +167,6 @@ class Processing:
         self.log.info("%s VOD(s) in download queue.", len(download_queue))
         self.log.debug("VOD queue: %s", [v.v_id for v in download_queue])
 
-        _video_download_queue: list = []
         _chat_download_queue: list = []
 
         # cache channels with associated broadcast VOD IDs
@@ -257,64 +191,11 @@ class Processing:
                 self.log.debug("Skipping as VOD is offline and `live-only` flag set.")
                 continue
 
-            _channel_index = _channel_cache.index(_vod.channel)
-            # if channel exists and is live
-            if (
-                _channel_cache[_channel_index]
-                and _channel_cache[_channel_index].is_live()
-            ):
-                # check if current VOD ID matches associated broadcast VOD ID
-                if _channel_cache[_channel_index].get_broadcast_v_id() == _vod.v_id:
-                    # skip if we aren't after currently live streams
-                    if self.archive_only:
-                        self.log.info(
-                            "Skipping VOD as it is live and no-stream argument provided."
-                        )
-                        continue
-
-                    # run real-time archiver if enabled and current stream is being archived to this VOD
-                    if self.real_time:
-                        self.log.debug("Archiving VOD with `real-time` archiver.")
-                        _real_time_archiver = RealTime(
-                            _vod,
-                            output_dir_for_vod,
-                            self.archive_chat,
-                            self.quality,
-                            self.threads,
-                        )
-                        self._start_download(_real_time_archiver)
-                        continue
-
-            if not _vod.video_archived and self.archive_video:
-                self.log.debug("Adding VOD to video archive queue.")
-                if _vod.type == "HIGHLIGHT":
-                    _video_download_queue.append(
-                        Highlight(
-                            _vod,
-                            output_dir_for_vod,
-                            self.quality,
-                            self.threads,
-                            self.quiet,
-                        )
-                    )
-
-                else:
-                    _video_download_queue.append(
-                        Video(
-                            _vod,
-                            output_dir_for_vod,
-                            self.quality,
-                            self.threads,
-                            self.quiet,
-                        )
-                    )
-
             if not _vod.chat_archived and self.archive_chat:
                 self.log.debug("Adding VOD to chat archive queue.")
-                _chat_download_queue.append(Chat(_vod, output_dir_for_vod, self.quiet))
-
-        for _downloader in _video_download_queue:
-            self._start_download(_downloader)
+                _chat_download_queue.append(
+                    Chat(_vod, output_dir_for_vod, self.quiet, self.threads)
+                )
 
         if _chat_download_queue:
             self.log.debug("Beginning sequential chat archival.")

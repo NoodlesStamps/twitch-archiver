@@ -49,11 +49,6 @@ class Arguments:
                     f"{mutex_args[0]}={mutex_arg_0}' and '{mutex_args[1]}={mutex_arg_1}'"
                 )
 
-        # get both video and chat logs if neither selected
-        if not cls.get("chat") and not cls.get("video"):
-            cls.set("chat", True)
-            cls.set("video", True)
-
         # generate list from comma-separated VODs
         try:
             if cls.get("vod"):
@@ -64,10 +59,6 @@ class Arguments:
                 cls.extract_vods_and_channels("channel")
         except TypeError:
             print("Error parsing provided channel or VOD argument.")
-
-        # split quality into [resolution, framerate]
-        if cls.get("quality") not in ["best", "worst"]:
-            cls.set("quality", cls.get("quality").split("p"))
 
         if cls.get("watch"):
             print("Launching Twitch-Archiver in watch mode.")
