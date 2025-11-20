@@ -311,10 +311,14 @@ class Processing:
 
             if not _vod.chat_archived and self.archive_chat:
                 self.log.debug("Adding VOD to chat archive queue.")
-                _chat_download_queue.append(Chat(_vod, output_dir_for_vod, self.quiet))
+                _chat_download_queue.append(
+                    Chat(_vod, output_dir_for_vod, self.quiet, self.threads)
+                )
 
-        for _downloader in _video_download_queue:
-            self._start_download(_downloader)
+        # download videos in parallel, chat logs sequentially
+        with ThreadPoolExecutor(max_workers=self.threads) as executor:
+            for _downloader in _video_download_queue:
+                executor.submit(self._start_download, _downloader)
 
         if _chat_download_queue:
             self.log.debug("Beginning sequential chat archival.")
