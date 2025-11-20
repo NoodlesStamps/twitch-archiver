@@ -1,6 +1,7 @@
 """
 Class for retrieving and storing information related to channels and users.
 """
+
 import logging
 import sys
 from datetime import datetime, timezone
@@ -235,23 +236,7 @@ class Channel:
 
         _index = m3u8.loads(_r.text)
 
-        # grab 'name' of m3u8 streams - contains [resolution]p[framerate]
-        _available_resolutions = [
-            m[0].group_id.split("p")
-            for m in [m.media for m in _index.playlists]
-            if m[0].group_id != "chunked"
-        ]
-        # insert 'chunked' stream separately as its named differently and strip ' (source)' from name
-        _available_resolutions.insert(
-            0, _index.media[0].name.strip(" (source)").split("p")
-        )
-        self._log.debug(
-            "Available resolutions for %s are: %s", self.name, _available_resolutions
-        )
-
-        _index_url = _index.playlists[
-            Vod.get_quality_index(quality, _available_resolutions)
-        ].uri
+        _index_url = Vod.get_playlist_for_quality(_index.playlists, quality).uri
         self._log.debug("Index for broadcast by %s: %s", self.name, _index_url)
 
         return _index_url
@@ -311,7 +296,7 @@ class Channel:
 
         _r = self._api.gql_request(
             "FilterableVideoTower_Videos",
-            "a937f1d22e269e39a03b509f65a7490f9fc247d7f83d6ac1421523e3b68042cb",
+            "67004f7881e65c297936f32c75246470629557a393788fb5a69d6d9a25a8fd5f",
             {
                 "broadcastType": "ARCHIVE",
                 "channelOwnerLogin": f"{self.name.lower()}",
@@ -397,7 +382,7 @@ class Channel:
         while True:
             _r = self._api.gql_request(
                 "FilterableVideoTower_Videos",
-                "a937f1d22e269e39a03b509f65a7490f9fc247d7f83d6ac1421523e3b68042cb",
+                "67004f7881e65c297936f32c75246470629557a393788fb5a69d6d9a25a8fd5f",
                 _query_vars,
             )
 
