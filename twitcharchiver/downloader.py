@@ -30,6 +30,7 @@ class Downloader:
 
         self.vod = Vod()
         self.output_dir = Path()
+        self.max_workers = 1
 
         self._log = logging.getLogger()
 

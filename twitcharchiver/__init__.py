@@ -64,15 +64,13 @@ def main():
             f"""\
     Twitch Archiver v{__version__} - https://github.com/Brisppy/twitch-archiver
 
-    A fast, platform-independent Python script for downloading past and present Twitch VODs and chat logs.
+    A fast, platform-independent Python script for downloading Twitch chat logs.
 
     requires one of:
         -c CHANNEL, --channel CHANNEL / URL
                 Channel(s) to download, separated with commas or a file path with `-f | --file` arg.
         -v VOD, --vod VOD_ID / URL
                 VOD ID(s) to download, separated with commas or a file path with `-f | --file` arg.
-                
-    Both the video and chat logs are grabbed if neither are specified.
     """
         ),
         formatter_class=argparse.RawTextHelpFormatter,
@@ -112,36 +110,12 @@ def main():
         default=False,
     )
     parser.add_argument(
-        "-C",
-        "--chat",
-        action="store_true",
-        help="Only save chat logs.",
-        default=getenv("TWITCH_ARCHIVER_CHAT", False, True),
-    )
-    parser.add_argument(
-        "-V",
-        "--video",
-        action="store_true",
-        help="Only save video.",
-        default=getenv("TWITCH_ARCHIVER_VIDEO", False, True),
-    )
-    parser.add_argument(
         "-t",
         "--threads",
         type=int,
         action="store",
-        help="Number of video download threads. (default: %(default)s)",
-        default=getenv("TWITCH_ARCHIVER_THREADS", 20),
-    )
-    parser.add_argument(
-        "-q",
-        "--quality",
-        type=str,
-        action="store",
-        help="Quality to download. Options are 'best', 'worst' or a custom value.\n"
-        "Format for custom values is [resolution]p[framerate], (e.g 1080p60, 720p30).\n"
-        "(default: best)",
-        default="best",
+        help="Number of download threads. (default: %(default)s)",
+        default=getenv("TWITCH_ARCHIVER_THREADS", 10),
     )
     parser.add_argument(
         "-d",
@@ -179,21 +153,6 @@ def main():
         action="store_true",
         help=argparse.SUPPRESS,
         default=False,
-    )
-    parser.add_argument(
-        "-H",
-        "--highlights",
-        action="store_true",
-        help="Archive highlights with channel.",
-        default=getenv("TWITCH_ARCHIVER_HIGHLIGHTS", False, True),
-    )
-    parser.add_argument(
-        "-R",
-        "--real-time-archiver",
-        action="store_true",
-        help="Enable real-time stream archiver.\n"
-        "Read https://github.com/Brisppy/twitch-archiver/wiki/Wiki#real-time-archiver.",
-        default=getenv("TWITCH_ARCHIVER_REAL_TIME_ARCHIVER", False, True),
     )
     parser.add_argument(
         "-L",

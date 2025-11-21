@@ -275,20 +275,29 @@ class Vod:
         if not self.v_id:
             return Chapters()
 
-        _r = self._api.gql_request(
-            "VideoPlayer_ChapterSelectButtonVideo",
-            "8d2793384aac3773beab5e59bd5d6f585aedb923d292800119e03d40cd0f9b41",
-            {"includePrivate": False, "videoID": str(self.v_id)},
-        )
+        try:
+            _r = self._api.gql_request(
+                "VideoPlayer_ChapterSelectButtonVideo",
+                "8d2793384aac3773beab5e59bd5d6f585aedb923d292800119e03d40cd0f9b41",
+                {"includePrivate": False, "videoID": str(self.v_id)},
+            )
 
-        # extract and return list of moments from returned json
-        _chapters = Chapters(
-            [node["node"] for node in _r.json()[0]["data"]["video"]["moments"]["edges"]]
-        )
+            # extract and return list of moments from returned json
+            _chapters = Chapters(
+                [
+                    node["node"]
+                    for node in _r.json()[0]["data"]["video"]["moments"]["edges"]
+                ]
+            )
 
-        if _chapters:
-            self._log.debug("Chapters for VOD %s: %s", self.v_id, _chapters)
-            return _chapters
+            if _chapters:
+                self._log.debug("Chapters for VOD %s: %s", self.v_id, _chapters)
+                return _chapters
+
+        except Exception as e:
+            self._log.warning(
+                "Failed to retrieve chapters for VOD %s. Error: %s", self.v_id, e
+            )
 
         self._log.debug("No chapters found for VOD %s.", self.v_id)
         # create single chapter out of VOD category
